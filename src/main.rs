@@ -1,5 +1,7 @@
 mod commands;
 
+use dotenv::dotenv;
+
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -54,7 +56,7 @@ impl EventHandler for Handler {
 
     async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
-
+        let guild_id: u64 = std::env::var("GUILD_ID").unwrap().parse().unwrap();
         let guild_id = GuildId(guild_id);
 
         let commands = GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
@@ -72,8 +74,12 @@ impl EventHandler for Handler {
 
 #[tokio::main]
 async fn main() {
+    tracing_subscriber::fmt::init();
+    
+    dotenv().ok();
     // Configure the client with your Discord bot token in the environment.
-    let token = token;
+    let token: String = std::env::var("DISCORD_TOKEN").unwrap();
+    let guild_id: u64 = std::env::var("GUILD_ID").unwrap().parse().unwrap();
 
     let songbird_config = Config::default()
         .decode_mode(DecodeMode::Decode);
@@ -172,8 +178,8 @@ impl VoiceEventHandler for Receiver {
 
 
 async fn join(ctx: &Context) -> String {
-    let connect_to = channleId;
-let guild_id = guild_id;
+    let connect_to: u64 = std::env::var("CHANNEL_ID").unwrap().parse().unwrap();
+    let guild_id: u64 = std::env::var("GUILD_ID").unwrap().parse().unwrap();
 
     let manager = songbird::get(ctx).await
     .expect("Songbird Voice client placed in at initialisation.").clone();
@@ -221,7 +227,7 @@ async fn play(ctx: &Context) -> String {
     // let url = "https://www.youtube.com/watch?v=VXDTjM67d30&pp=ygUP0L7RgiDQstC40L3RgtCw".to_string();
 
    
-    let guild_id = guild_id;
+    let guild_id: u64 = std::env::var("GUILD_ID").unwrap().parse().unwrap();
 
     let manager = songbird::get(ctx).await
         .expect("Songbird Voice client placed in at initialisation.").clone();
