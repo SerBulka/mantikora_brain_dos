@@ -81,13 +81,16 @@ async fn main() {
     let token: String = std::env::var("DISCORD_TOKEN").unwrap();
     let guild_id: u64 = std::env::var("GUILD_ID").unwrap().parse().unwrap();
 
-    let songbird_config = Config::default()
-        .decode_mode(DecodeMode::Decode);
+    let intents = GatewayIntents::GUILD_MESSAGES
+        | GatewayIntents::DIRECT_MESSAGES
+        | GatewayIntents::MESSAGE_CONTENT
+        | GatewayIntents::non_privileged();
+
     let handler = Handler{ user_id: Arc::new(Mutex::new(0))};
     // Build our client.
-    let mut client = Client::builder(token, GatewayIntents::empty())
+    let mut client = Client::builder(token, intents)
         .event_handler(handler)
-        .register_songbird_from_config(songbird_config)
+        .register_songbird()
         .await
         .expect("Error creating client");
 
@@ -223,7 +226,7 @@ async fn join(ctx: &Context) -> String {
 }
 
 async fn play(ctx: &Context) -> String {
-    let url = "https://cdn42.zvuk.com/track/stream?id=124206497&code=ILf3P5Y855qvgDg4dcGzZg&expires=1696260701".to_string();
+    let url = "D\\mantikora_brain_dos\\mp3\\stream.mp3".to_string();
     // let url = "https://www.youtube.com/watch?v=VXDTjM67d30&pp=ygUP0L7RgiDQstC40L3RgtCw".to_string();
 
    
@@ -232,8 +235,8 @@ async fn play(ctx: &Context) -> String {
     let manager = songbird::get(ctx).await
         .expect("Songbird Voice client placed in at initialisation.").clone();
 
-    if let Some(handler_lock) = manager.get(guild_id) {
-        let mut handler = handler_lock.lock().await;
+        let handler_lock = manager.join(guild_id, 701137077168898170).await;
+        let mut handler = handler_lock.0.lock().await;
 
         let source = match songbird::ffmpeg(&url).await {
             Ok(source) => source,
@@ -247,7 +250,5 @@ async fn play(ctx: &Context) -> String {
         handler.play_source(source);
 
         return "Я".to_string()
-    } else {
-        return "ты".to_string()
-    }
+
 }
