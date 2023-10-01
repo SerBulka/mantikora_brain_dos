@@ -1,6 +1,4 @@
-pub mod attachmentinput;
 pub mod id;
-pub mod numberinput;
-pub mod ping;
-pub mod welcome;
-pub mod wonderful_command;
+pub mod start;
+pub mod stop;
+pub mod set_target;

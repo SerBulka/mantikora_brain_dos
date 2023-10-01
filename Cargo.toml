@@ -7,5 +7,5 @@ edition = "2021"
 
 [dependencies]
 songbird = "0.3.2"
-serenity = { version = "0.11.6",default-features = false, features = ["client", "gateway", "rustls_backend", "model"] }
+serenity = { version = "0.11.6",default-features = false, features = ["client", "gateway", "rustls_backend", "model", "voice"] }
 tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }

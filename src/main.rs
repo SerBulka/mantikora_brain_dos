@@ -1,15 +1,29 @@
 mod commands;
 
-use std::env;
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use serenity::async_trait;
-use serenity::model::application::command::Command;
 use serenity::model::application::interaction::{Interaction, InteractionResponseType};
 use serenity::model::gateway::Ready;
 use serenity::model::id::GuildId;
 use serenity::prelude::*;
+use songbird::{
+    driver::DecodeMode,
+    model::payload::{ClientDisconnect, Speaking},
+    Config,
+    CoreEvent,
+    Event,
+    EventContext,
+    EventHandler as VoiceEventHandler,
+    SerenityInit,
+};
+use serenity::client::Context;
 
-struct Handler;
+struct Handler {
+    user_id: Arc<Mutex<u64>>
+}
+
 
 #[async_trait]
 impl EventHandler for Handler {
@@ -18,9 +32,10 @@ impl EventHandler for Handler {
             println!("Received command interaction: {:#?}", command);
 
             let content = match command.data.name.as_str() {
-                "ping" => commands::ping::run(&command.data.options),
                 "id" => commands::id::run(&command.data.options),
-                "attachmentinput" => commands::attachmentinput::run(&command.data.options),
+                "set_target" => commands::set_target::run(&command.data.options, Arc::clone(&self.user_id)),
+                "stop" => play(&ctx).await,
+                "start" => join(&ctx).await,
                 _ => "not implemented :(".to_string(),
             };
 
@@ -40,37 +55,33 @@ impl EventHandler for Handler {
     async fn ready(&self, ctx: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
 
-        let guild_id = GuildId();
+        let guild_id = GuildId(guild_id);
 
         let commands = GuildId::set_application_commands(&guild_id, &ctx.http, |commands| {
             commands
-                .create_application_command(|command| commands::ping::register(command))
                 .create_application_command(|command| commands::id::register(command))
-                .create_application_command(|command| commands::welcome::register(command))
-                .create_application_command(|command| commands::numberinput::register(command))
-                .create_application_command(|command| commands::attachmentinput::register(command))
+                .create_application_command(|command| commands::start::register(command))
+                .create_application_command(|command| commands::stop::register(command))
+                .create_application_command(|command| commands::set_target::register(command))
         })
         .await;
 
         println!("I now have the following guild slash commands: {:#?}", commands);
-
-        let guild_command = Command::create_global_application_command(&ctx.http, |command| {
-            commands::wonderful_command::register(command)
-        })
-        .await;
-
-        println!("I created the following global slash command: {:#?}", guild_command);
     }
 }
 
 #[tokio::main]
 async fn main() {
     // Configure the client with your Discord bot token in the environment.
-    let token = "";
+    let token = token;
 
+    let songbird_config = Config::default()
+        .decode_mode(DecodeMode::Decode);
+    let handler = Handler{ user_id: Arc::new(Mutex::new(0))};
     // Build our client.
     let mut client = Client::builder(token, GatewayIntents::empty())
-        .event_handler(Handler)
+        .event_handler(handler)
+        .register_songbird_from_config(songbird_config)
         .await
         .expect("Error creating client");
 
@@ -80,5 +91,157 @@ async fn main() {
     // exponential backoff until it reconnects.
     if let Err(why) = client.start().await {
         println!("Client error: {:?}", why);
+    }
+}
+
+struct Receiver;
+
+impl Receiver {
+    pub fn new() -> Self {
+        // You can manage state here, such as a buffer of audio packet bytes so
+        // you can later store them in intervals.
+        Self { }
+    }
+}
+
+#[async_trait]
+impl VoiceEventHandler for Receiver {
+    #[allow(unused_variables)]
+    async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
+        use EventContext as Ctx;
+        match ctx {
+            Ctx::SpeakingStateUpdate(
+                Speaking {speaking, ssrc, user_id, ..}
+            ) => {
+                println!(
+                    "Speaking state update: user {:?} has SSRC {:?}, using {:?}",
+                    user_id,
+                    ssrc,
+                    speaking,
+                );
+            },
+            Ctx::SpeakingUpdate(data) => {
+                // You can implement logic here which reacts to a user starting
+                // or stopping speaking, and to map their SSRC to User ID.
+                println!(
+                    "Source {} has {} speaking.",
+                    data.ssrc,
+                    if data.speaking {"started"} else {"stopped"},
+                );
+            },
+            Ctx::VoicePacket(data) => {
+                // An event which fires for every received audio packet,
+                // containing the decoded data.
+                if let Some(audio) = data.audio {
+                    println!("Audio packet's first 5 samples: {:?}", audio.get(..5.min(audio.len())));
+                    println!(
+                        "Audio packet sequence {:05} has {:04} bytes (decompressed from {}), SSRC {}",
+                        data.packet.sequence.0,
+                        audio.len() * std::mem::size_of::<i16>(),
+                        data.packet.payload.len(),
+                        data.packet.ssrc,
+                    );
+                } else {
+                    println!("RTP packet, but no audio. Driver may not be configured to decode.");
+                }
+            },
+            Ctx::RtcpPacket(data) => {
+                // An event which fires for every received rtcp packet,
+                // containing the call statistics and reporting information.
+                println!("RTCP packet received: {:?}", data.packet);
+            },
+            Ctx::ClientDisconnect(
+                ClientDisconnect {user_id, ..}
+            ) => {
+                // You can implement your own logic here to handle a user who has left the
+                // voice channel e.g., finalise processing of statistics etc.
+                // You will typically need to map the User ID to their SSRC; observed when
+                // first speaking.
+
+                println!("Client disconnected: user {:?}", user_id);
+            },
+            _ => {
+                // We won't be registering this struct for any more event classes.
+                unimplemented!()
+            }
+        }
+
+        None
+    }
+}
+
+
+async fn join(ctx: &Context) -> String {
+    let connect_to = channleId;
+let guild_id = guild_id;
+
+    let manager = songbird::get(ctx).await
+    .expect("Songbird Voice client placed in at initialisation.").clone();
+
+    let (handler_lock, conn_result) = manager.join(guild_id, connect_to).await;
+
+    if let Ok(_) = conn_result {
+        // NOTE: this skips listening for the actual connection result.
+        let mut handler = handler_lock.lock().await;
+
+        handler.add_global_event(
+            CoreEvent::SpeakingStateUpdate.into(),
+            Receiver::new(),
+        );
+
+        handler.add_global_event(
+            CoreEvent::SpeakingUpdate.into(),
+            Receiver::new(),
+        );
+
+        handler.add_global_event(
+            CoreEvent::VoicePacket.into(),
+            Receiver::new(),
+        );
+
+        handler.add_global_event(
+            CoreEvent::RtcpPacket.into(),
+            Receiver::new(),
+        );
+
+        handler.add_global_event(
+            CoreEvent::ClientDisconnect.into(),
+            Receiver::new(),
+        );
+        println!("тама");
+        "Присоединился к каналу".to_string()
+    } else {
+        println!("тута");
+        "Не присоединился к каналу".to_string()
+    }
+}
+
+async fn play(ctx: &Context) -> String {
+    let url = "https://cdn42.zvuk.com/track/stream?id=124206497&code=ILf3P5Y855qvgDg4dcGzZg&expires=1696260701".to_string();
+    // let url = "https://www.youtube.com/watch?v=VXDTjM67d30&pp=ygUP0L7RgiDQstC40L3RgtCw".to_string();
+
+   
+    let guild_id = guild_id;
+
+    let manager = songbird::get(ctx).await
+        .expect("Songbird Voice client placed in at initialisation.").clone();
+
+    if let Some(handler_lock) = manager.get(guild_id) {
+        let mut handler = handler_lock.lock().await;
+
+        let source = match songbird::ffmpeg(&url).await {
+            Ok(source) => source,
+            Err(why) => {
+                println!("Err starting source: {:?}", why);
+
+                return "Я русский ZZZ".to_string()
+            },
+        };
+
+        handler.play_source(source);
+
+        return "Я".to_string()
+    } else {
+        return "ты".to_string()
     }
 }
